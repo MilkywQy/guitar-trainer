@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0c0f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Guitar Trainer">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Guitar Trainer</title>
+<style>
+:root{color-scheme:dark;--bg:#0b0c0f;--card:#17191f;--muted:#9da3af;--line:#2a2e37}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#fff;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",Arial,sans-serif;min-height:100vh}
+.wrap{max-width:560px;margin:auto;padding:calc(20px + env(safe-area-inset-top)) 18px calc(28px + env(safe-area-inset-bottom))}
+h1{font-size:30px;margin:8px 0 3px}.sub,.small{color:var(--muted)}.sub{margin-bottom:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:18px;margin:12px 0}
+.row{display:flex;gap:10px}.row>div{flex:1}.label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:7px}
+select,input{width:100%}select{background:#22252d;color:#fff;border:1px solid #343844;border-radius:12px;padding:12px;font-size:16px}
+.question{font-size:27px;font-weight:750;text-align:center;min-height:70px;display:flex;align-items:center;justify-content:center}
+.answer{font-size:42px;font-weight:850;text-align:center;min-height:54px}.stats{display:flex;justify-content:space-between;color:var(--muted);font-size:14px;margin-top:12px}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:10px}button{border:0;border-radius:16px;padding:16px;font-size:17px;font-weight:750}
+#start{background:#fff;color:#111}#stop{background:#292d36;color:#fff}.status{text-align:center;color:var(--muted);font-size:13px;margin-top:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>🎸 Guitar Trainer</h1>
+<div class="sub">Mémorise les notes du manche sans regarder la guitare.</div>
+
+<div class="card">
+ <div class="row">
+  <div><div class="label">Niveau</div><select id="level">
+   <option value="anchors">Repères 0·3·5·7·9·12</option>
+   <option value="low">Mi grave + La</option>
+   <option value="four">4 cordes</option>
+   <option value="all" selected>Manche complet</option>
+  </select></div>
+  <div><div class="label">Durée</div><select id="duration">
+   <option value="5">5 min</option><option value="10">10 min</option>
+   <option value="15" selected>15 min</option><option value="20">20 min</option>
+  </select></div>
+ </div>
+</div>
+
+<div class="card">
+ <div class="label">Temps de réponse</div>
+ <select id="delay"><option value="2">2 secondes</option><option value="3" selected>3 secondes</option><option value="4">4 secondes</option><option value="5">5 secondes</option></select>
+</div>
+
+<div class="card">
+ <div id="question" class="question">Appuie sur Démarrer</div>
+ <div id="answer" class="answer"></div>
+ <div class="stats"><span id="count">Question 0</span><span id="time">15:00</span></div>
+</div>
+
+<div class="controls"><button id="start">▶ Démarrer</button><button id="stop">■ Arrêter</button></div>
+<div id="status" class="status">Son activé via la voix française de l’iPhone.</div>
+</div>
+
+<script>
+const NOTES=["Do","Do dièse","Ré","Ré dièse","Mi","Fa","Fa dièse","Sol","Sol dièse","La","La dièse","Si"];
+const STRINGS=[{name:"Mi grave",n:4},{name:"La",n:9},{name:"Ré",n:2},{name:"Sol",n:7},{name:"Si",n:11},{name:"Mi aiguë",n:4}];
+const el=id=>document.getElementById(id);
+let active=false, session=0, endAt=0, count=0, last="", clock=null;
+
+function wait(ms){return new Promise(r=>setTimeout(r,ms))}
+function speak(text, mySession){
+ return new Promise(resolve=>{
+   if(!active || mySession!==session){resolve();return}
+   const u=new SpeechSynthesisUtterance(text);
+   u.lang="fr-FR"; u.rate=.9; u.volume=1;
+   u.onend=()=>resolve(); u.onerror=()=>resolve();
+   window.speechSynthesis.speak(u);
+ });
+}
+function getPool(){
+ let strings=STRINGS, frets=[0,1,2,3,4,5,6,7,8,9,10,11,12];
+ const l=el("level").value;
+ if(l==="anchors") frets=[0,3,5,7,9,12];
+ if(l==="low") strings=STRINGS.slice(0,2);
+ if(l==="four") strings=STRINGS.slice(0,4);
+ return {strings,frets};
+}
+function nextQ(){
+ const p=getPool(); let s,f,k;
+ do{s=p.strings[Math.floor(Math.random()*p.strings.length)];f=p.frets[Math.floor(Math.random()*p.frets.length)];k=s.name+"-"+f}while(k===last);
+ last=k; return {s,f,n:NOTES[(s.n+f)%12]};
+}
+async function run(mySession){
+ while(active && mySession===session && Date.now()<endAt){
+   const q=nextQ(); count++;
+   el("count").textContent="Question "+count;
+   el("question").textContent=`Corde de ${q.s.name} · case ${q.f}`;
+   el("answer").textContent="";
+   await speak(`Corde de ${q.s.name}, case ${q.f}.`,mySession);
+   await wait(Number(el("delay").value)*1000);
+   if(!active || mySession!==session) return;
+   el("answer").textContent=q.n;
+   await speak(q.n+".",mySession);
+   await wait(1400);
+ }
+ if(active && mySession===session) stop(true);
+}
+function updateClock(){
+ const s=Math.max(0,Math.ceil((endAt-Date.now())/1000));
+ el("time").textContent=String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
+}
+function start(){
+ session++; const mySession=session; active=true; count=0; last="";
+ window.speechSynthesis.cancel();
+ endAt=Date.now()+Number(el("duration").value)*60000;
+ clearInterval(clock); clock=setInterval(updateClock,250); updateClock();
+ el("status").textContent="Entraînement en cours…";
+ // Important pour iOS : la première synthèse est lancée directement depuis le clic.
+ const intro=new SpeechSynthesisUtterance("C'est parti.");
+ intro.lang="fr-FR"; intro.rate=.9;
+ intro.onend=()=>{if(active && mySession===session) run(mySession)};
+ intro.onerror=()=>{if(active && mySession===session) run(mySession)};
+ window.speechSynthesis.speak(intro);
+}
+function stop(finished=false){
+ active=false; session++; clearInterval(clock); window.speechSynthesis.cancel();
+ el("answer").textContent="";
+ el("question").textContent=finished?"Séance terminée 👏":"Entraînement arrêté";
+ el("status").textContent=finished?"Bravo !":"Prêt à recommencer.";
+}
+el("start").addEventListener("click",start);
+el("stop").addEventListener("click",()=>stop(false));
+if("serviceWorker" in navigator) window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
+</script>
+</body></html>
